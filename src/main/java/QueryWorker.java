@@ -2,37 +2,34 @@ import com.github.davidmoten.rx.jdbc.Database;
 import rx.functions.Func0;
 import rx.schedulers.Schedulers;
 
+import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Phaser;
 
 /**
  * Created by anshuman.tripat on 7/26/17.
  */
-public class QueryWorker implements Runnable {
+public class QueryWorker implements Callable<List<Person>> {
 
-    private ConcurrentHashMap<String, Timestamp> rangeMap;
-    Phaser ph;
+    private HashMap<String, Timestamp> rangeMap;
 
 
-    public QueryWorker(ConcurrentHashMap<String, Timestamp> rangeMap, Phaser ph) {
+    public QueryWorker(HashMap<String, Timestamp> rangeMap) {
         this.rangeMap = rangeMap;
-        this.ph = ph;
-
     }
 
     @Override
-    public void run() {
-        ph.register();
-
-        List<Person> people = PersonContext.getPeople();
-        Database db = PersonContext.getInstance().getAsyncDb();
-
-        //Query between each monthly period as an Observable
-        db.select("select * from person where work_period between :from and :to ;")
-                .parameters(rangeMap)
+    public List<Person> call() throws Exception {
+        List<Person> people = new ArrayList<>();
+        Database db = PersonContext.getInstance().getSyncDb();
+        db.select("select * from person where work_period between ? and ?")
+                .parameter(rangeMap.get("from"))
+                .parameter(rangeMap.get("to"))
                 .get(resultSet -> new Person(               //Get person from result set
                         resultSet.getInt("id"),
                         resultSet.getInt("age"),
@@ -40,22 +37,17 @@ public class QueryWorker implements Runnable {
                         resultSet.getString("last_name"),
                         resultSet.getTimestamp("work_period").toLocalDateTime()))
                 .collect((Func0<List<Person>>) ArrayList::new,      //Collect all results to a List
-                        (personList, person) -> {
-                            System.out.println("Adding person: " + person.toString());
-                            personList.add(person);
-                        }).subscribeOn(Schedulers.newThread())
+                        List::add)
                 .subscribe(
                         people1 -> {
                             people.addAll(people1);             // Add current results to the main result
-                            PersonContext.setPeople(people);
                             db.close();             // End Database connection
                         },
                         e -> System.out.println("Error" + e),
-                        () -> {
-                            System.out.println("Completed adding everyone");
-                            ph.arriveAndDeregister();       //Deregister Phaser on completion of current query thread
-                            ph.arriveAndDeregister();
-                        }
+                        () -> System.out.println("Completed adding people for " + rangeMap.get("from").
+                                toLocalDateTime().getMonth().name())
                 );
+        return people;
     }
+
 }

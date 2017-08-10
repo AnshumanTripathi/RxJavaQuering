@@ -12,8 +12,8 @@ public class PersonContext {
     private static PersonContext instance = null;
     private static final Object lock = new Object();
     private static List<Person> people = new ArrayList<>();
-    private Database syncDb = Database.from("jdbc:mysql://localhost/test");
-    private Database asyncDb = Database.from("jdbc:mysql://localhost/test").asynchronous();
+    private Database syncDb = Database.from("jdbc:mysql://localhost/test","root","root");
+    private Database asyncDb = Database.from("jdbc:mysql://localhost/test","root","root").asynchronous();
 
 
     private PersonContext() {
